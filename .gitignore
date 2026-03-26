@@ -1,0 +1,22 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Model artifacts and generated outputs
+results/
+*.h5
+*.pb
+*.log
+
+# Legacy project folder (do not migrate into main repo)
+cnn1/
+
+# IDE
+.vscode/
+.ipynb_checkpoints/
