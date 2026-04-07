@@ -17,7 +17,7 @@ from keras.layers import (
 )
 from keras.models import Model
 from keras.optimizers import Adam
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, classification_report
 from sklearn.model_selection import train_test_split
 from skimage import io
 from unet import UNet
@@ -40,7 +40,12 @@ def load_dataset(img_dir, mask_dir, texture_dir, rgb_path=None):
     if len(mask_files) == 0 or len(tex_files) == 0 or len(img_files) == 0:
         raise RuntimeError('Пустой набор данных: проверьте img/mask/texture')
 
-    sample_count = min(len(mask_files), len(tex_files), len(img_files))
+    # Prefer non-rgb files as base image list when both gray and rgb variants exist.
+    base_img_files = [f for f in img_files if 'rgb' not in f.lower()]
+    if not base_img_files:
+        base_img_files = img_files
+
+    sample_count = min(len(mask_files), len(tex_files), len(base_img_files))
 
     rgb_override = None
     if rgb_path and os.path.isfile(rgb_path):
@@ -54,7 +59,7 @@ def load_dataset(img_dir, mask_dir, texture_dir, rgb_path=None):
     masks = []
 
     for idx in range(sample_count):
-        base_img = io.imread(os.path.join(img_dir, img_files[idx]))
+        base_img = io.imread(os.path.join(img_dir, base_img_files[idx]))
         mask = io.imread(os.path.join(mask_dir, mask_files[idx]))
         texture = io.imread(os.path.join(texture_dir, tex_files[idx]))
 
@@ -64,7 +69,9 @@ def load_dataset(img_dir, mask_dir, texture_dir, rgb_path=None):
         if texture.ndim == 3:
             texture = texture[..., 0]
 
-        if rgb_override is not None and rgb_override.shape[:2] == mask.shape[:2]:
+        # Use an external rgb override only in one-image setup to avoid copying one rgb frame
+        # to unrelated samples when dataset has many images.
+        if sample_count == 1 and rgb_override is not None and rgb_override.shape[:2] == mask.shape[:2]:
             rgb = rgb_override
         elif base_img.ndim == 3 and base_img.shape[-1] >= 3:
             rgb = base_img[..., :3]
@@ -194,21 +201,44 @@ def residual_block(x, filters):
     return Activation('relu')(out)
 
 
-def build_fcn(input_shape, out_ch=2):
+def csp_block(x, filters):
+    shortcut = conv_bn_relu(x, filters, kernel=1)
+    y = conv_bn_relu(x, filters)
+    y = conv_bn_relu(y, filters)
+    y = Concatenate()([shortcut, y])
+    return conv_bn_relu(y, filters, kernel=1)
+
+
+def build_yolo_seg_lite(input_shape, out_ch=2):
     inp = Input(shape=input_shape)
 
-    x = conv_bn_relu(inp, 32)
-    x = MaxPooling2D()(x)
+    s1 = conv_bn_relu(inp, 32)
+    x = Conv2D(64, 3, strides=2, padding='same', use_bias=False)(s1)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    s2 = csp_block(x, 64)
+    x = Conv2D(128, 3, strides=2, padding='same', use_bias=False)(s2)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+
+    x = csp_block(x, 128)
+    x = conv_bn_relu(x, 128)
+
+    x = Conv2DTranspose(64, 3, strides=2, padding='same', use_bias=False)(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Concatenate()([x, s2])
     x = conv_bn_relu(x, 64)
-    x = MaxPooling2D()(x)
-    x = conv_bn_relu(x, 128)
-    x = conv_bn_relu(x, 128)
 
-    x = Conv2DTranspose(64, 3, strides=2, padding='same', activation='relu')(x)
-    x = Conv2DTranspose(32, 3, strides=2, padding='same', activation='relu')(x)
+    x = Conv2DTranspose(32, 3, strides=2, padding='same', use_bias=False)(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Concatenate()([x, s1])
+    x = conv_bn_relu(x, 32)
+
     out = Conv2D(out_ch, 1, activation='softmax')(x)
-
-    return Model(inp, out, name='FCN')
+    return Model(inp, out, name='YOLOSegLite')
 
 
 def build_resunet(input_shape, out_ch=2):
@@ -299,6 +329,53 @@ def write_results_table(results, out_dir):
         md_file.write('\n'.join(lines) + '\n')
 
 
+def write_run_summary(results, args, out_dir):
+    if not results:
+        return
+
+    best = max(results, key=lambda row: float(row['test_f1']))
+    summary_path = os.path.join(out_dir, 'run_summary.md')
+
+    lines = [
+        '# Run Summary',
+        '',
+        '## Configuration',
+        f'- img: `{args.img}`',
+        f'- mask: `{args.mask}`',
+        f'- texture: `{args.texture}`',
+        f'- rgb_image: `{args.rgb_image}`',
+        f'- tile: `{args.tile}`',
+        f'- stride: `{args.stride}`',
+        f'- infer_stride: `{args.infer_stride}`',
+        f'- batch: `{args.batch}`',
+        f'- epochs: `{args.epochs}`',
+        f'- learning_rate: `{args.learning_rate}`',
+        f'- patience: `{args.patience}`',
+        f'- seed: `{args.seed}`',
+        '',
+        '## Best Model',
+        f"- model: `{best['model']}`",
+        f"- test_f1: `{best['test_f1']}`",
+        f"- full_macro_f1: `{best['full_macro_f1']}`",
+        f"- threshold: `{best['threshold']}`",
+        '',
+        '## Ranking (by test_f1)',
+    ]
+
+    for idx, row in enumerate(sorted(results, key=lambda r: float(r['test_f1']), reverse=True), start=1):
+        lines.append(
+            f"{idx}. `{row['model']}`: test_f1={row['test_f1']}, full_macro_f1={row['full_macro_f1']}, epochs={row['epochs_ran']}"
+        )
+
+    lines.extend([
+        '',
+        'See also: `model_comparison.md` and per-model `metrics.txt` files.',
+    ])
+
+    with open(summary_path, 'w', encoding='utf-8') as out:
+        out.write('\n'.join(lines) + '\n')
+
+
 def train_one_model(model_name, model, data, args):
     x_train, y_train, x_val, y_val, x_test, y_test, full_image, full_mask = data
 
@@ -371,6 +448,14 @@ def train_one_model(model_name, model, data, args):
         zero_division=0,
     )
 
+    full_cls_report = classification_report(
+        full_true.ravel(),
+        full_pred.ravel(),
+        target_names=['Background', 'Object'],
+        digits=2,
+        zero_division=0,
+    )
+
     io.imsave(os.path.join(model_dir, 'full_prediction.png'), full_pred.astype(np.uint8) * 255)
 
     summary = {
@@ -387,6 +472,9 @@ def train_one_model(model_name, model, data, args):
     with open(os.path.join(model_dir, 'metrics.txt'), 'w', encoding='utf-8') as out:
         for key, value in summary.items():
             out.write(f'{key}: {value}\n')
+
+    with open(os.path.join(model_dir, 'report.txt'), 'w', encoding='utf-8') as out:
+        out.write(full_cls_report + '\n')
 
     return summary
 
@@ -465,7 +553,7 @@ def main():
 
     model_builders = [
         ('UNet', lambda: build_unet_model(input_shape, out_ch=2)),
-        ('FCN', lambda: build_fcn(input_shape, out_ch=2)),
+        ('YOLOSegLite', lambda: build_yolo_seg_lite(input_shape, out_ch=2)),
         ('ResUNet', lambda: build_resunet(input_shape, out_ch=2)),
         ('SegNetLite', lambda: build_segnet_lite(input_shape, out_ch=2)),
     ]
@@ -486,6 +574,7 @@ def main():
     # Удобнее читать итоговую таблицу, если отсортировать по test F1
     results.sort(key=lambda row: float(row['test_f1']), reverse=True)
     write_results_table(results, args.out)
+    write_run_summary(results, args, args.out)
 
     print('\n=== Final F1 table ===')
     for row in results:

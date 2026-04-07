@@ -2,21 +2,30 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
 
 # Virtual environments
 .venv/
 venv/
 ENV/
 
-# Model artifacts and generated outputs
-results/
+# Data and generated artifacts
 *.h5
 *.pb
-*.log
 
-# Legacy project folder (do not migrate into main repo)
+# Legacy project content
 cnn1/
 
-# IDE
+# Local project docs (not tracked)
+PROJECT_IMPLEMENTANION_GUIDE.md
+PROJECT_IMPLEMENTATION_GUIDE.md
+TECHNICAL_SPECIFICATION.md
+
+# IDE/editor files
 .vscode/
 .ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

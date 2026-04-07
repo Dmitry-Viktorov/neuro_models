@@ -1,0 +1,9 @@
+              precision    recall  f1-score   support
+
+  Background       0.80      0.73      0.77    314803
+      Object       0.84      0.89      0.87    512625
+
+    accuracy                           0.83    827428
+   macro avg       0.82      0.81      0.82    827428
+weighted avg       0.83      0.83      0.83    827428
+

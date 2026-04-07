@@ -1,0 +1,8 @@
+model: UNet
+train_f1: 0.891616
+val_f1_best_thr: 0.897900
+test_f1: 0.821725
+full_macro_f1: 0.815834
+threshold: 0.660000
+epochs_ran: 7
+params: 31055938
