@@ -1,0 +1,8 @@
+model: YOLOSegLite
+train_f1: 0.899884
+val_f1_best_thr: 0.903116
+test_f1: 0.847724
+full_macro_f1: 0.842344
+threshold: 0.680000
+epochs_ran: 12
+params: 860482

@@ -1,0 +1,8 @@
+model: SegNetLite
+train_f1: 0.907633
+val_f1_best_thr: 0.907679
+test_f1: 0.853633
+full_macro_f1: 0.843951
+threshold: 0.550000
+epochs_ran: 12
+params: 186818

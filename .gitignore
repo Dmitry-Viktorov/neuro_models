@@ -1,41 +1,31 @@
-# Prerequisites
-*.d
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# Virtual environments
+.venv/
+venv/
+ENV/
 
-# Precompiled Headers
-*.gch
-*.pch
+# Data and generated artifacts
+*.h5
+*.pb
 
-# Linker files
-*.ilk
+# Legacy project content
+cnn1/
 
-# Debugger Files
-*.pdb
+# Local project docs (not tracked)
+PROJECT_IMPLEMENTANION_GUIDE.md
+PROJECT_IMPLEMENTATION_GUIDE.md
+TECHNICAL_SPECIFICATION.md
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
+# IDE/editor files
+.vscode/
+.ipynb_checkpoints/
 
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-
-# debug information files
-*.dwo
+# OS files
+.DS_Store
+Thumbs.db

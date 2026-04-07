@@ -1,0 +1,8 @@
+model: ResUNet
+train_f1: 0.897587
+val_f1_best_thr: 0.901865
+test_f1: 0.842744
+full_macro_f1: 0.844139
+threshold: 0.740000
+epochs_ran: 9
+params: 500802
